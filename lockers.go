@@ -287,7 +287,8 @@ func (inv *Inventory) DeallocateLocker(locker_index int) {
 }
 
 func (inv *Inventory) AdjustVirtualCapacity(size_id LockerSize, by int) {
-	for _, other_id := range inv.Control[size_id].SmallerThan {
+	inv.Control[size_id].VirtualCapacity += by
+	for _, other_id := range inv.Control[size_id].BiggerThan {
 		inv.Control[other_id].VirtualCapacity += by
 	}
 }
