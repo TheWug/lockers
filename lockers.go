@@ -292,11 +292,3 @@ func (inv *Inventory) AdjustVirtualCapacity(size_id LockerSize, by int) {
 		inv.Control[other_id].VirtualCapacity += by
 	}
 }
-
-func MustInventory(inv *Inventory, err error) *Inventory {
-	if err != nil {
-		panic(err.Error())
-	}
-	
-	return inv
-}
