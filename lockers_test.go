@@ -251,6 +251,30 @@ func CompareControls(t *testing.T, a, b *LockerControlSpec, ia, ib *Inventory) b
 	return true
 }
 
+func ValidateInventory(t *testing.T, a *Inventory) (bool, string) {
+	t.Helper()
+	
+	if len(a.Sizes) != len(a.Control) {
+		return false, "len(sizes) and len(control) mismatch"
+	}
+	
+	for k, v := range a.Control {
+		if k != v.SizeId { return false, "inconsistent ControlSpec.SizeId to key" }
+		if k != a.Sizes[v.Size] { return false, "inconsistent Sizes[ControlSpec.Size] to key" }
+		for _, i := range v.Lockers {
+			if i >= len(a.Lockers) { return false, "locker index in ControlSpec.Lockers too big" }
+			if a.Lockers[i].SizeId != k { return false, "inconsistent locker SizeId to ControlSpec" }
+		}
+	}
+	
+	for k, v := range a.LockersById {
+		if v >= len(a.Lockers) { return false, "locker index in LockersById too big" }
+		if a.Lockers[v].Id != k { return false, "inconsistent locker id to LockersById" }
+	}
+	
+	return true, ""
+}
+
 func CompareInventories(t *testing.T, a, b *Inventory) (bool, string) {
 	t.Helper()
 	
@@ -485,6 +509,10 @@ func Test_New_Inventory(t *testing.T) {
 			eq, explanation := CompareInventories(t, i, v.result)
 			if !eq {
 				t.Errorf("Incorrect NewInventory output:\n%+v\nExpected:\n%+v\n%s", i, v.result, explanation)
+			}
+			valid, explanation := ValidateInventory(t, i)
+			if !valid {
+				t.Errorf("Invalid or malformed inventory:\n%+v\n%s", i, explanation)
 			}
 		})
 	}
