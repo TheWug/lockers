@@ -489,3 +489,171 @@ func Test_New_Inventory(t *testing.T) {
 		})
 	}
 }
+
+func basic(t *testing.T) *Inventory {
+	t.Helper()
+	
+	return &Inventory{
+		Lockers: []Locker{
+			Locker{"1", 100, nil},
+			Locker{"2", 100, nil},
+			Locker{"3", 200, nil},
+			Locker{"4", 200, nil},
+			Locker{"5", 300, nil},
+			Locker{"6", 300, nil},
+			Locker{"7", 400, nil},
+			Locker{"8", 400, nil},
+		},
+		Control: map[LockerSize]*LockerControlSpec{
+			100: &LockerControlSpec{
+				SizeId: 100,
+				Size: SizeSpec{1,1,1},
+				SmallerThan: []LockerSize{200,300,400},
+				Lockers: []int{0,1},
+				VirtualCapacity: 6,
+			},
+			200: &LockerControlSpec{
+				SizeId: 200,
+				Size: SizeSpec{2,2,2},
+				SmallerThan: []LockerSize{300,400},
+				BiggerThan: []LockerSize{100},
+				Lockers: []int{2,3},
+				VirtualCapacity: 4,
+			},
+			300: &LockerControlSpec{
+				SizeId: 300,
+				Size: SizeSpec{3,3,3},
+				SmallerThan: []LockerSize{400},
+				BiggerThan: []LockerSize{100,200},
+				Lockers: []int{4,5},
+				VirtualCapacity: 2,
+			},
+			400: &LockerControlSpec{
+				SizeId: 400,
+				Size: SizeSpec{4,4,4},
+				BiggerThan: []LockerSize{100,200,300},
+				Lockers: []int{},
+				VirtualCapacity: 0,
+			},
+		},
+		Sizes: map[SizeSpec]LockerSize{
+			SizeSpec{1,1,1}: 100,
+			SizeSpec{2,2,2}: 200,
+			SizeSpec{3,3,3}: 300,
+			SizeSpec{4,4,4}: 400,
+		},
+		LockersById: map[string]int{
+			"1": 0,
+			"2": 1,
+			"3": 2,
+			"4": 3,
+			"5": 4,
+			"6": 5,
+		},
+		LockersByPackageId: make(map[string]int),
+	}
+}
+
+func Test_Inventory_AllocateLocker(t *testing.T) {
+	inv := basic(t)
+	
+	type X struct {
+		size SizeSpec
+		panics bool
+	}
+	
+	tests := map[string]X{
+		"smallest": X{SizeSpec{1,1,1}, false},
+		"medium": X{SizeSpec{2,2,2}, false},
+		"largest": X{SizeSpec{3,3,3}, false},
+		"overallocate": X{SizeSpec{4,4,4}, true},
+		"missing": X{SizeSpec{5,5,5}, true},
+	}
+	
+	for k, v := range tests {
+		t.Run(k, func(t *testing.T) {
+			defer func(){
+				r := recover()
+				if v.panics && r == nil {
+					t.Errorf("Expected panic, but completed normally")
+				} else if !v.panics && r != nil {
+					t.Errorf("Expected normal completion, but panic'd")
+				}
+			}()
+			
+			size := inv.Sizes[v.size]
+			var inner_available []int
+			if x, ok := inv.Control[size]; ok {
+				inner_available = x.Lockers
+			}
+			available := make(map[int]bool)
+			for _, x := range inner_available {
+				available[x] = true
+			}
+			
+			// a should be removed from inv.Control[size].Lockers
+			// if the slice has no elements, or if size isn't in Control, it will panic
+			a := inv.AllocateLocker(size)
+			
+			if len(available) != len(inv.Control[size].Lockers) + 1 {
+				t.Error("Mismatched lengths between expected and actual lockers free")
+			}
+			
+			delete(available, a)
+			for _, x := range inv.Control[size].Lockers {
+				delete(available, x)
+			}
+			
+			if len(available) != 0 {
+				t.Error("Mismatched values in expected and actual lockers free")
+			}
+		})
+	}
+}
+
+func Test_Inventory_AdjustVirtualCapacity(t *testing.T) {
+	inv1, inv2, inv3 := basic(t), basic(t), basic(t)
+	inv1.Control[LockerSize(100)].VirtualCapacity += 1
+	inv2.Control[LockerSize(100)].VirtualCapacity += 2
+	inv3.Control[LockerSize(100)].VirtualCapacity += 3
+	
+	inv2.Control[LockerSize(200)].VirtualCapacity += 2
+	inv3.Control[LockerSize(200)].VirtualCapacity += 3
+	
+	inv3.Control[LockerSize(300)].VirtualCapacity += 3
+	
+	type X struct {
+		add int
+		addto LockerSize
+		result *Inventory
+		panics bool
+	}
+	
+	tests := map[string]X{
+		"smallest": X{1, 100, inv1, false},
+		"medium": X{2, 200, inv2, false},
+		"largest": X{3, 300, inv3, false},
+		"missing": X{4, 400, nil, true},
+	}
+	
+	for k, v := range tests {
+		t.Run(k, func(t *testing.T) {
+			defer func() {
+				r := recover()
+				if v.panics && r == nil {
+					t.Errorf("Expected panic, but completed normally")
+				} else if !v.panics && r != nil {
+					t.Errorf("Expected normal completion, but panic'd")
+				}
+			}()
+			
+			inv := basic(t)
+			inv.AdjustVirtualCapacity(v.addto, v.add)
+			
+			eq, explain := CompareInventories(t, inv, v.result)
+			if !eq {
+				t.Errorf("Incorrect NewInventory output:\n%+v\nExpected:\n%+v\n%s", inv, v.result, explain)
+			}
+		})
+	}
+}
