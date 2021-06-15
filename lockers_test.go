@@ -611,8 +611,11 @@ func Test_Inventory_AllocateLocker(t *testing.T) {
 			
 			size := inv.Sizes[v.size]
 			var inner_available []int
+			var capacity int
+			
 			if x, ok := inv.Control[size]; ok {
 				inner_available = x.Lockers
+				capacity = x.VirtualCapacity
 			}
 			available := make(map[int]bool)
 			for _, x := range inner_available {
@@ -634,6 +637,10 @@ func Test_Inventory_AllocateLocker(t *testing.T) {
 			
 			if len(available) != 0 {
 				t.Error("Mismatched values in expected and actual lockers free")
+			}
+			
+			if capacity == inv.Control[size].VirtualCapacity {
+				t.Error("Virtual capacity unchanged")
 			}
 		})
 	}
