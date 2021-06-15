@@ -214,11 +214,10 @@ func NewInventory(locker_counts_by_size map[SizeSpec]int) *Inventory {
 	return inv
 }
 
-func (inv *Inventory) PlaceIntoLocker(pkg *Package) (string, error) {
+func (inv *Inventory) GetMostSuitableLockerSize(package_size SizeSpec) (LockerSize, error) {
 	// build a list of all locker sizes which a. have empty lockers and
-	// b. have enough space for the given package
+	// b. have enough space for the given dimensions
 	candidate_sizes := make([]LockerSize, 0, len(inv.Sizes))
-	package_size := pkg.Size.Normalize()
 	for size, size_id := range inv.Sizes {
 		if !size.Contains(package_size) { continue }
 		if inv.Control[size_id].Full() { continue }
@@ -227,15 +226,24 @@ func (inv *Inventory) PlaceIntoLocker(pkg *Package) (string, error) {
 	}
 	
 	if len(candidate_sizes) == 0 {
-		return "", errors.New("No available lockers which can fit package")
+		return LockerSize(0), errors.New("No available lockers which can fit package")
 	}
 	
 	// choose the most eligible candidate
-	var chosen_id LockerSize
-	for i, id := range candidate_sizes {
-		if i == 0 || id.Before(chosen_id, inv) {
+	chosen_id := candidate_sizes[0]
+	for _, id := range candidate_sizes[1:] {
+		if id.Before(chosen_id, inv) {
 			chosen_id = id
 		}
+	}
+
+	return chosen_id, nil
+}
+
+func (inv *Inventory) DepositPackage(pkg *Package) (string, error) {
+	chosen_id, err := inv.GetMostSuitableLockerSize(pkg.Size.Normalize())
+	if err != nil {
+		return "", err
 	}
 	
 	locker_index := inv.AllocateLocker(chosen_id)
