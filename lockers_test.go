@@ -369,7 +369,6 @@ func Test_New_Inventory(t *testing.T) {
 	type X struct {
 		size_counts map[SizeSpec]int
 		result *Inventory
-		err error
 	}
 	
 	tests := map[string]X {
@@ -379,7 +378,7 @@ func Test_New_Inventory(t *testing.T) {
 			Sizes: make(map[SizeSpec]LockerSize),
 			LockersById: make(map[string]int),
 			LockersByPackageId: make(map[string]int),
-		}, nil},
+		}},
 		"1-type-lockers": X{map[SizeSpec]int{SizeSpec{1,1,1}:3}, &Inventory{
 			Lockers: []Locker{
 				Locker{"1", 100, nil},
@@ -403,7 +402,7 @@ func Test_New_Inventory(t *testing.T) {
 				"3": 2,
 			},
 			LockersByPackageId: make(map[string]int),
-		}, nil},
+		}},
 		"3-type-lockers": X{map[SizeSpec]int{SizeSpec{3,3,3}:2, SizeSpec{1,1,1}:2, SizeSpec{2,2,2}:2}, &Inventory{
 			Lockers: []Locker{
 				Locker{"1", 100, nil},
@@ -451,7 +450,7 @@ func Test_New_Inventory(t *testing.T) {
 				"6": 5,
 			},
 			LockersByPackageId: make(map[string]int),
-		}, nil},
+		}},
 		"duplicate-lockers": X{map[SizeSpec]int{SizeSpec{2,1,1}:2, SizeSpec{1,2,1}:2}, &Inventory{
 			Lockers: []Locker{
 				Locker{"1", 100, nil},
@@ -477,18 +476,15 @@ func Test_New_Inventory(t *testing.T) {
 				"4": 3,
 			},
 			LockersByPackageId: make(map[string]int),
-		}, nil},
+		}},
 	}
 	
 	for k, v := range tests {
 		t.Run(k, func(t *testing.T) {
-			i, err := NewInventory(v.size_counts)
+			i := NewInventory(v.size_counts)
 			eq, explanation := CompareInventories(t, i, v.result)
 			if !eq {
 				t.Errorf("Incorrect NewInventory output:\n%+v\nExpected:\n%+v\n%s", i, v.result, explanation)
-			}
-			if !(err == v.err || (err != nil && v.err != nil && err.Error() != v.err.Error())) {
-				t.Errorf("Incorrect error message: Got %v, expected %v", err, v.err)
 			}
 		})
 	}

@@ -135,7 +135,7 @@ func (l *Locker) Fetch() (*Package, error) {
 	return p, nil
 }
 
-func NewInventory(locker_counts_by_size map[SizeSpec]int) (*Inventory, error) {
+func NewInventory(locker_counts_by_size map[SizeSpec]int) *Inventory {
 	total_locker_count := 0
 	for _, count := range locker_counts_by_size {
 		total_locker_count += count
@@ -211,7 +211,7 @@ func NewInventory(locker_counts_by_size map[SizeSpec]int) (*Inventory, error) {
 		ctrl.VirtualCapacity += len(ctrl.Lockers)
 	}
 	
-	return inv, nil
+	return inv
 }
 
 func (inv *Inventory) PlaceIntoLocker(pkg *Package) (string, error) {
