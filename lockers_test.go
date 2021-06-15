@@ -577,6 +577,76 @@ func basic(t *testing.T) *Inventory {
 			"4": 3,
 			"5": 4,
 			"6": 5,
+			"7": 6,
+			"8": 7,
+		},
+		LockersByPackageId: make(map[string]int),
+	}
+}
+
+func cplx(t *testing.T) *Inventory {
+	t.Helper()
+	
+	return &Inventory{
+		Lockers: []Locker{
+			Locker{"1", 100, nil},
+			Locker{"2", 100, nil},
+			Locker{"3", 200, nil},
+			Locker{"4", 200, nil},
+			Locker{"4.5", 200, nil},
+			Locker{"5", 300, nil},
+			Locker{"6", 300, nil},
+			Locker{"7", 400, nil},
+			Locker{"8", 400, nil},
+		},
+		Control: map[LockerSize]*LockerControlSpec{
+			100: &LockerControlSpec{
+				SizeId: 100,
+				Size: SizeSpec{1,1,1},
+				SmallerThan: []LockerSize{200,300,400},
+				Lockers: []int{0,1},
+				VirtualCapacity: 8,
+			},
+			200: &LockerControlSpec{
+				SizeId: 200,
+				Size: SizeSpec{5,1,1},
+				SmallerThan: []LockerSize{400},
+				BiggerThan: []LockerSize{100},
+				Lockers: []int{2,3,4},
+				VirtualCapacity: 4,
+			},
+			300: &LockerControlSpec{
+				SizeId: 300,
+				Size: SizeSpec{3,3,1},
+				SmallerThan: []LockerSize{400},
+				BiggerThan: []LockerSize{100},
+				Lockers: []int{5,6},
+				VirtualCapacity: 3,
+			},
+			400: &LockerControlSpec{
+				SizeId: 400,
+				Size: SizeSpec{5,5,5},
+				BiggerThan: []LockerSize{100,200,300},
+				Lockers: []int{7},
+				VirtualCapacity: 1,
+			},
+		},
+		Sizes: map[SizeSpec]LockerSize{
+			SizeSpec{1,1,1}: 100,
+			SizeSpec{5,1,1}: 200,
+			SizeSpec{3,3,1}: 300,
+			SizeSpec{5,5,5}: 400,
+		},
+		LockersById: map[string]int{
+			"1": 0,
+			"2": 1,
+			"3": 2,
+			"4": 3,
+			"4.5": 4,
+			"5": 5,
+			"6": 6,
+			"7": 7,
+			"8": 8,
 		},
 		LockersByPackageId: make(map[string]int),
 	}
@@ -721,4 +791,91 @@ func Test_Inventory_DeallocateLocker(t *testing.T) {
 	if capacity == control.VirtualCapacity {
 		t.Errorf("Virtual capacity unchanged: %d %d", capacity, control.VirtualCapacity)
 	}
+}
+
+func Test_Inventory_GetMostSuitableLockerSize(t *testing.T) {
+	inv1, inv2, inv3, inv4 := cplx(t), cplx(t), cplx(t), cplx(t)
+	// inv1 is normal and unmodified
+	
+	// inv2 has all {1,1,1} lockers allocated
+	inv2.Control[100].VirtualCapacity -= len(inv2.Control[200].Lockers)
+	inv2.Control[100].Lockers = nil
+	
+	// inv3 has all {1,1,1} lockers allocated, and one {4,1,1} locker resized to {3,3,1}
+	inv3.Control[100].VirtualCapacity -= len(inv2.Control[200].Lockers)
+	inv3.Control[100].Lockers = nil
+	inv3.Control[200].Lockers = []int{2,3}
+	inv3.Control[300].Lockers = []int{4,5,6}
+	inv3.Lockers[4].SizeId = 300
+	inv3.Control[200].VirtualCapacity -= 1
+	inv3.Control[300].VirtualCapacity += 1
+	
+	// inv4 has no available lockers except for small
+	for _, c := range inv4.Control {
+		if (c.Size == SizeSpec{1,1,1}) {
+			c.VirtualCapacity = len(c.Lockers)
+			continue
+		}
+		c.Lockers = nil
+		c.VirtualCapacity = 0
+	}
+	
+	type X struct {
+		inv *Inventory
+		size SizeSpec
+		answer SizeSpec
+		is_error bool
+	}
+	
+	tests := map[string]X{
+		"normal-micro":     X{inv1, SizeSpec{1,0,0}, SizeSpec{1,1,1}, false},
+		"normal-small":     X{inv1, SizeSpec{1,1,1}, SizeSpec{1,1,1}, false},
+		"normal-med-ambig": X{inv1, SizeSpec{3,1,1}, SizeSpec{5,1,1}, false},
+		"normal-med1":      X{inv1, SizeSpec{4,1,1}, SizeSpec{5,1,1}, false},
+		"normal-med2":      X{inv1, SizeSpec{2,2,1}, SizeSpec{3,3,1}, false},
+		"normal-big-ambig": X{inv1, SizeSpec{4,4,2}, SizeSpec{5,5,5}, false},
+		"normal-toobig":    X{inv1, SizeSpec{7,1,1}, SizeSpec{0,0,0}, true},
+		
+		"nosmall-micro":     X{inv2, SizeSpec{1,0,0}, SizeSpec{5,1,1}, false},
+		"nosmall-small":     X{inv2, SizeSpec{1,1,1}, SizeSpec{5,1,1}, false},
+		"nosmall-med-ambig": X{inv2, SizeSpec{3,1,1}, SizeSpec{5,1,1}, false},
+		"nosmall-med1":      X{inv2, SizeSpec{4,1,1}, SizeSpec{5,1,1}, false},
+		"nosmall-med2":      X{inv2, SizeSpec{2,2,1}, SizeSpec{3,3,1}, false},
+		"nosmall-big-ambig": X{inv2, SizeSpec{4,4,2}, SizeSpec{5,5,5}, false},
+		"nosmall-toobig":    X{inv2, SizeSpec{7,1,1}, SizeSpec{0,0,0}, true},
+		
+		"nosmall-swapped-micro":     X{inv3, SizeSpec{1,0,0}, SizeSpec{3,3,1}, false},
+		"nosmall-swapped-small":     X{inv3, SizeSpec{1,1,1}, SizeSpec{3,3,1}, false},
+		"nosmall-swapped-med-ambig": X{inv3, SizeSpec{3,1,1}, SizeSpec{3,3,1}, false},
+		"nosmall-swapped-med1":      X{inv3, SizeSpec{4,1,1}, SizeSpec{5,1,1}, false},
+		"nosmall-swapped-med2":      X{inv3, SizeSpec{2,2,1}, SizeSpec{3,3,1}, false},
+		"nosmall-swapped-big-ambig": X{inv3, SizeSpec{4,4,2}, SizeSpec{5,5,5}, false},
+		"nosmall-swapped-toobig":    X{inv3, SizeSpec{7,1,1}, SizeSpec{0,0,0}, true},
+		
+		"empty-micro":     X{inv4, SizeSpec{1,0,0}, SizeSpec{1,1,1}, false},
+		"empty-small":     X{inv4, SizeSpec{1,1,1}, SizeSpec{1,1,1}, false},
+		"empty-med-ambig": X{inv4, SizeSpec{3,1,1}, SizeSpec{0,0,0}, true},
+		"empty-med1":      X{inv4, SizeSpec{4,1,1}, SizeSpec{0,0,0}, true},
+		"empty-med2":      X{inv4, SizeSpec{2,2,1}, SizeSpec{0,0,0}, true},
+		"empty-big-ambig": X{inv4, SizeSpec{4,4,2}, SizeSpec{0,0,0}, true},
+		"empty-toobig":    X{inv4, SizeSpec{7,1,1}, SizeSpec{0,0,0}, true},
+	}
+	
+	for k, v := range tests {
+		t.Run(k, func(t *testing.T) {
+			out, err := v.inv.GetMostSuitableLockerSize(v.size)
+			if err != nil && v.is_error {
+				return
+			}
+			if err != nil {
+				t.Errorf("Unexpected error: %s", err.Error())
+			} else if v.is_error {
+				t.Errorf("Expected error, but got %v instead", out)
+			}
+			
+			if out != v.inv.Sizes[v.answer] {
+				t.Errorf("Wrong answer: expected %v, got %v", v.answer, v.inv.Control[out].Size)
+			}
+		})
+	}	
 }
