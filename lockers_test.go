@@ -692,3 +692,33 @@ func Test_Inventory_AdjustVirtualCapacity(t *testing.T) {
 		})
 	}
 }
+
+func Test_Inventory_DeallocateLocker(t *testing.T) {
+	inv := basic(t)
+	
+	control, ok := inv.Control[400]
+	if !ok || len(control.Lockers) != 0 {
+		t.Error("precondition failed")
+	}
+	
+	capacity := control.VirtualCapacity
+	
+	inv.DeallocateLocker(7)
+	inv.DeallocateLocker(6)
+	
+	available := make(map[int]bool)
+	for _, x := range control.Lockers {
+		available[x] = true
+	}
+	
+	delete(available, 6)
+	delete(available, 7)
+
+	if len(control.Lockers) != 2 || len(available) != 0 {
+		t.Error("Element mismatch when checking available list")
+	}
+	
+	if capacity == control.VirtualCapacity {
+		t.Errorf("Virtual capacity unchanged: %d %d", capacity, control.VirtualCapacity)
+	}
+}
