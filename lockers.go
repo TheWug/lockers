@@ -13,6 +13,12 @@ import (
 // defines a unique ID which corresponds to a particular size of locker.
 type LockerSize int
 
+// defines IDs for identifying packages. Expected to be unique, in an inventory.
+type PackageID string
+
+// defines IDs for identifying lockers. Expected to be unique, in an inventory.
+type LockerID string
+
 // defines a limited interface by which LockerSize objects might access Inventory
 // functionality when determining relative priority for storing new objects.
 type IControlSpec interface{
@@ -102,7 +108,7 @@ func (lcs LockerControlSpec) Full() bool {
 
 // A structure which represents a locker. Lockers come in discrete sizes.
 type Locker struct {
-	Id string
+	Id LockerID
 	SizeId LockerSize
 
 	Contents *Package
@@ -110,7 +116,7 @@ type Locker struct {
 
 // A structure which represents a package. Packages can come in any size.
 type Package struct {
-	Id string
+	Id PackageID
 	Size SizeSpec
 
 	StoredIn *Locker
@@ -124,8 +130,8 @@ type Inventory struct {
 	Control map[LockerSize]*LockerControlSpec
 	Sizes map[SizeSpec]LockerSize
 
-	LockersById map[string]int
-	LockersByPackageId map[string]int
+	LockersById map[LockerID]int
+	LockersByPackageId map[PackageID]int
 }
 
 // Fetches the locker control group of requested size, or nil if none exists.
@@ -181,8 +187,8 @@ func NewInventory(locker_counts_by_size map[SizeSpec]int) *Inventory {
 		Control: make(map[LockerSize]*LockerControlSpec, len(locker_counts_by_size)),
 		Sizes: make(map[SizeSpec]LockerSize, len(locker_counts_by_size)),
 
-		LockersById: make(map[string]int, total_locker_count),
-		LockersByPackageId: make(map[string]int, total_locker_count),
+		LockersById: make(map[LockerID]int, total_locker_count),
+		LockersByPackageId: make(map[PackageID]int, total_locker_count),
 
 		Lockers: make([]Locker, total_locker_count, total_locker_count),
 	}
@@ -209,7 +215,7 @@ func NewInventory(locker_counts_by_size map[SizeSpec]int) *Inventory {
 		}
 
 		for max, i := count + index, 0; index < max; index, i = index+1, i+1 {
-			id := uuid.NewString()
+			id := LockerID(uuid.NewString())
 			inv.Lockers[index] = Locker{
 				SizeId: size_id,
 				Id: id,
@@ -294,7 +300,7 @@ func (inv *Inventory) GetMostSuitableLockerSize(package_size SizeSpec) (LockerSi
 
 // places a package into the inventory. O(n) for n different size lockers.
 // returns a locker ID and nil, or "" and an error if one occurs.
-func (inv *Inventory) DepositPackage(pkg *Package) (string, error) {
+func (inv *Inventory) DepositPackage(pkg *Package) (LockerID, error) {
 	if _, ok := inv.LockersByPackageId[pkg.Id]; ok {
 		return "", errors.New("Duplicate package ID")
 	}
@@ -322,13 +328,13 @@ func (inv *Inventory) RetrievePackage(pkg *Package) (*Package, error) {
 }
 
 // removes a package from the inventory.
-func (inv *Inventory) RetrievePackageById(id string) (*Package, error) {
+func (inv *Inventory) RetrievePackageById(id PackageID) (*Package, error) {
 	lid, ok := inv.LockersByPackageId[id]
 	return inv.RetrievePackageInternal(lid, ok)
 }
 
 // removes a package from the inventory.
-func (inv *Inventory) RetrievePackageByLockerId(id string) (*Package, error) {
+func (inv *Inventory) RetrievePackageByLockerId(id LockerID) (*Package, error) {
 	lid, ok := inv.LockersById[id]
 	return inv.RetrievePackageInternal(lid, ok)
 }

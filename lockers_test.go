@@ -325,7 +325,7 @@ func CompareInventories(t *testing.T, a, b *Inventory) (bool, string) {
 
 	type PackageProxy struct {
 		Size SizeSpec
-		Id string
+		Id PackageID
 	}
 
 	type LockerProxy struct {
@@ -404,8 +404,8 @@ func Test_New_Inventory(t *testing.T) {
 			Lockers: make([]Locker, 0),
 			Control: make(map[LockerSize]*LockerControlSpec),
 			Sizes: make(map[SizeSpec]LockerSize),
-			LockersById: make(map[string]int),
-			LockersByPackageId: make(map[string]int),
+			LockersById: make(map[LockerID]int),
+			LockersByPackageId: make(map[PackageID]int),
 		}},
 		"1-type-lockers": X{map[SizeSpec]int{SizeSpec{1,1,1}:3}, &Inventory{
 			Lockers: []Locker{
@@ -424,12 +424,12 @@ func Test_New_Inventory(t *testing.T) {
 			Sizes: map[SizeSpec]LockerSize{
 				SizeSpec{1,1,1}: 100,
 			},
-			LockersById: map[string]int{
+			LockersById: map[LockerID]int{
 				"1": 0,
 				"2": 1,
 				"3": 2,
 			},
-			LockersByPackageId: make(map[string]int),
+			LockersByPackageId: make(map[PackageID]int),
 		}},
 		"3-type-lockers": X{map[SizeSpec]int{SizeSpec{3,3,3}:2, SizeSpec{1,1,1}:2, SizeSpec{2,2,2}:2}, &Inventory{
 			Lockers: []Locker{
@@ -469,7 +469,7 @@ func Test_New_Inventory(t *testing.T) {
 				SizeSpec{2,2,2}: 200,
 				SizeSpec{3,3,3}: 300,
 			},
-			LockersById: map[string]int{
+			LockersById: map[LockerID]int{
 				"1": 0,
 				"2": 1,
 				"3": 2,
@@ -477,7 +477,7 @@ func Test_New_Inventory(t *testing.T) {
 				"5": 4,
 				"6": 5,
 			},
-			LockersByPackageId: make(map[string]int),
+			LockersByPackageId: make(map[PackageID]int),
 		}},
 		"duplicate-lockers": X{map[SizeSpec]int{SizeSpec{2,1,1}:2, SizeSpec{1,2,1}:2}, &Inventory{
 			Lockers: []Locker{
@@ -497,13 +497,13 @@ func Test_New_Inventory(t *testing.T) {
 			Sizes: map[SizeSpec]LockerSize{
 				SizeSpec{2,1,1}: 100,
 			},
-			LockersById: map[string]int{
+			LockersById: map[LockerID]int{
 				"1": 0,
 				"2": 1,
 				"3": 2,
 				"4": 3,
 			},
-			LockersByPackageId: make(map[string]int),
+			LockersByPackageId: make(map[PackageID]int),
 		}},
 	}
 
@@ -574,7 +574,7 @@ func basic(t *testing.T) *Inventory {
 			SizeSpec{3,3,3}: 300,
 			SizeSpec{4,4,4}: 400,
 		},
-		LockersById: map[string]int{
+		LockersById: map[LockerID]int{
 			"1": 0,
 			"2": 1,
 			"3": 2,
@@ -584,7 +584,7 @@ func basic(t *testing.T) *Inventory {
 			"7": 6,
 			"8": 7,
 		},
-		LockersByPackageId: make(map[string]int),
+		LockersByPackageId: make(map[PackageID]int),
 	}
 }
 
@@ -641,7 +641,7 @@ func cplx(t *testing.T) *Inventory {
 			SizeSpec{3,3,1}: 300,
 			SizeSpec{5,5,5}: 400,
 		},
-		LockersById: map[string]int{
+		LockersById: map[LockerID]int{
 			"1": 0,
 			"2": 1,
 			"3": 2,
@@ -652,7 +652,7 @@ func cplx(t *testing.T) *Inventory {
 			"7": 7,
 			"8": 8,
 		},
-		LockersByPackageId: make(map[string]int),
+		LockersByPackageId: make(map[PackageID]int),
 	}
 }
 
@@ -959,12 +959,11 @@ func cplx_pkg(t *testing.T) (*Inventory, *Package) {
 	return inv, pkg
 }
 
-func sp(s string) *string { return &s }
-
 func Test_Inventory_RetrievePackage(t *testing.T) {
+	sp := func(s PackageID) *PackageID { return &s }
 
 	type X struct {
-		package_id *string
+		package_id *PackageID
 		is_error bool
 	}
 
@@ -999,9 +998,10 @@ func Test_Inventory_RetrievePackage(t *testing.T) {
 }
 
 func Test_Inventory_RetrievePackageByLockerId(t *testing.T) {
+	sp := func(s LockerID) *LockerID { return &s }
 
 	type X struct {
-		locker_id *string
+		locker_id *LockerID
 		is_error bool
 	}
 
