@@ -885,3 +885,154 @@ func Test_Inventory_GetMostSuitableLockerSize(t *testing.T) {
 		})
 	}	
 }
+
+func Test_Inventory_DepositPackage(t *testing.T) {
+	type X struct {
+		inv *Inventory
+		pkg *Package
+		is_error bool
+	}
+	
+	inv := cplx(t)
+	inv.LockersByPackageId["dupe"] = 0
+	
+	tests := map[string]X{
+		"tiny":        X{cplx(t), &Package{"a", SizeSpec{1,0,0}, nil}, false},
+		"small":       X{cplx(t), &Package{"b", SizeSpec{1,1,1}, nil}, false},
+		"med-ambig":   X{cplx(t), &Package{"c", SizeSpec{3,1,1}, nil}, false},
+		"med1":        X{cplx(t), &Package{"d", SizeSpec{5,1,1}, nil}, false},
+		"med2":        X{cplx(t), &Package{"e", SizeSpec{3,3,1}, nil}, false},
+		"large-ambig": X{cplx(t), &Package{"f", SizeSpec{4,4,4}, nil}, false},
+		"too-large":   X{cplx(t), &Package{"g", SizeSpec{6,6,6}, nil}, true},
+		"dupe-pkg":    X{inv,     &Package{"dupe", SizeSpec{1,1,1}, nil}, true},
+		"stored-pkg":  X{inv,     &Package{"h", SizeSpec{1,1,1}, &inv.Lockers[0]}, true},
+		"no-space":    X{&Inventory{}, &Package{"h", SizeSpec{1,1,1}, nil}, true},
+	}
+	
+	for k, v := range tests {
+		t.Run(k, func(t *testing.T) {
+			id, err := v.inv.DepositPackage(v.pkg)
+			if err != nil && v.is_error {
+				return
+			} else if err != nil {
+				t.Errorf("Unexpected error: %s", err.Error())
+				return
+			} else if v.is_error {
+				t.Error("Expected error, but completed successfully")
+			}
+			
+			if v.pkg.StoredIn == nil {
+				t.Error("Package was not stored in a locker")
+			}
+			
+			if v.pkg.StoredIn.Contents != v.pkg {
+				t.Error("Package <--> Locker mapping inconsistent")
+			}
+			
+			if &v.inv.Lockers[v.inv.LockersById[id]] != v.pkg.StoredIn {
+				t.Error("Bad return value: non-mapping ID")
+			}
+		})
+	}
+}
+
+func cplx_pkg(t *testing.T) (*Inventory, *Package) {
+	t.Helper()
+
+	inv := cplx(t)
+	
+	ctrl := inv.Control[200]
+	locker_index := ctrl.Lockers[len(ctrl.Lockers) - 1]
+	ctrl.Lockers = ctrl.Lockers[:len(ctrl.Lockers) - 1]
+	locker := &inv.Lockers[locker_index]
+	pkg := &Package{"abc", SizeSpec{1,1,1}, locker}
+	locker.Contents = pkg
+	ctrl.VirtualCapacity -= 1
+	for _, x := range ctrl.BiggerThan {
+		inv.Control[x].VirtualCapacity -= 1
+	}
+	delete(inv.LockersById, locker.Id)
+	locker.Id = "locker"
+	inv.LockersById[locker.Id] = locker_index
+	inv.LockersByPackageId[pkg.Id] = locker_index
+	
+	return inv, pkg
+}
+
+func sp(s string) *string { return &s }
+
+func Test_Inventory_RetrievePackage(t *testing.T) {
+
+	type X struct {
+		package_id *string
+		is_error bool
+	}
+	
+	tests := map[string]X{
+		"normal":  X{nil, false},
+		"missing": X{sp("no-id"), true},
+	}
+	
+	for k, v := range tests {
+		t.Run(k, func(t *testing.T) {
+			inv, pkg := cplx_pkg(t)
+			if v.package_id != nil {
+				pkg.Id = *v.package_id
+			}
+			
+			output, err := inv.RetrievePackage(pkg)
+			if err != nil && v.is_error {
+				return
+			} else if err != nil {
+				t.Errorf("Unexpected error: %s", err.Error())
+				return
+			} else if v.is_error {
+				t.Error("Unespected success")
+				return
+			}
+			
+			if output != pkg {
+				t.Errorf("Got unexpected package back")
+			}
+		})
+	}
+}
+
+func Test_Inventory_RetrievePackageByLockerId(t *testing.T) {
+
+	type X struct {
+		locker_id *string
+		is_error bool
+	}
+	
+	tests := map[string]X{
+		"normal":  X{nil, false},
+		"missing": X{sp("8"), true},
+	}
+	
+	for k, v := range tests {
+		t.Run(k, func(t *testing.T) {
+			inv, pkg := cplx_pkg(t)
+			locker_id := pkg.StoredIn.Id
+			
+			if v.locker_id != nil {
+				locker_id = *v.locker_id
+			}
+			
+			output, err := inv.RetrievePackageByLockerId(locker_id)
+			if err != nil && v.is_error {
+				return
+			} else if err != nil {
+				t.Errorf("Unexpected error: %s", err.Error())
+				return
+			} else if v.is_error {
+				t.Error("Unespected success")
+				return
+			}
+			
+			if output != pkg {
+				t.Errorf("Got unexpected package back")
+			}
+		})
+	}
+}
