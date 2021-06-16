@@ -1,3 +1,7 @@
+// Structures and algorithms for efficiently managing the logistics
+// of a system of lockers and packages, generalized to 3D rectangular packages
+// and lockers of any collection of sizes.
+// Inserting a package is O(n), for n number of different SIZES of LOCKER.
 package lockers
 
 import (
@@ -6,15 +10,18 @@ import (
 	"github.com/google/uuid"
 )
 
+// defines a unique ID which corresponds to a particular size of locker.
 type LockerSize int
 
+// defines a limited interface by which LockerSize objects might access Inventory
+// functionality when determining relative priority for storing new objects.
 type IControlSpec interface{
 	ControlSpec(LockerSize) *LockerControlSpec
 }
 
-// perform an inventory aware comparison of 2 locker sizes.
-// the "lowest" locker size is the one with the largest number of
-// available lockers, and then the one with the smallest volume.
+// Performs an inventory aware comparison of 2 locker sizes. the "earliest"
+// locker size is the one with the largest number of available spaces for
+// items of this size, and then the one with the smallest volume.
 func (id LockerSize) Before(other_id LockerSize, inv IControlSpec) bool {
 	self, other := inv.ControlSpec(id), inv.ControlSpec(other_id)
 	if self.VirtualCapacity > other.VirtualCapacity {
@@ -26,10 +33,13 @@ func (id LockerSize) Before(other_id LockerSize, inv IControlSpec) bool {
 	return false
 }
 
+// a 3 dimensional vector, concretely representing the dimensions of a locker or package.
 type SizeSpec struct {
 	Length, Width, Height int
 }
 
+// Normalizes a SizeSpec by making any negative dimensions positive, and then sorting
+// dimensions in descending order.
 func (spec SizeSpec) Normalize() SizeSpec {
 	// make sure all values are positive or zero
 	// this doesn't actually completely work, because MIN_INT = -MIN_INT, but
@@ -57,17 +67,22 @@ func (spec SizeSpec) Normalize() SizeSpec {
 	return spec
 }
 
+// Computes the 3D volume of a SizeSpec, length * width * height.
 func (spec SizeSpec) Volume() int64 {
 	return int64(spec.Length) * int64(spec.Width) * int64(spec.Height)
 }
 
-// expects normalized SizeSpecs
+// Checks if a SizeSpec fully contains another.  You MUST normalize both SizeSpecs
+// before using this function, or it will produce inaccurate results.
 func (spec SizeSpec) Contains(other SizeSpec) bool {
 	return spec.Length >= other.Length &&
 	       spec.Width  >= other.Width  &&
 	       spec.Height >= other.Height
 }
 
+// An internal structure which represents a collection of lockers of a single size.
+// Contains lists of other locker sizes which are bigger/smaller, as well as
+// the combined total free capacity of all lockers which are equal or larger.
 type LockerControlSpec struct {
 	SizeId LockerSize
 	Size SizeSpec
@@ -80,10 +95,12 @@ type LockerControlSpec struct {
 	VirtualCapacity int
 }
 
+// Returns true if a LockerControlSpec has no available lockers and false otherwise.
 func (lcs LockerControlSpec) Full() bool {
 	return len(lcs.Lockers) == 0
 }
 
+// A structure which represents a locker. Lockers come in discrete sizes.
 type Locker struct {
 	Id string
 	SizeId LockerSize
@@ -91,6 +108,7 @@ type Locker struct {
 	Contents *Package
 }
 
+// A structure which represents a package. Packages can come in any size.
 type Package struct {
 	Id string
 	Size SizeSpec
@@ -98,6 +116,8 @@ type Package struct {
 	StoredIn *Locker
 }
 
+// The inventory structure manages what lockers are available and what packages
+// they contain. This provides the primary functionality of this module.
 type Inventory struct {
 	Lockers []Locker
 
@@ -108,10 +128,15 @@ type Inventory struct {
 	LockersByPackageId map[string]int
 }
 
+// Fetches the locker control group of requested size, or nil if none exists.
+// required to implement IControlSpec.
 func (inv Inventory) ControlSpec(size_id LockerSize) *LockerControlSpec {
 	return inv.Control[size_id]
 }
 
+// Puts a package into a locker. Returns an error if there is a problem, such as
+// a locker which already has an item in it or a package which is already in a
+// locker, or nil if the operation completes normally.
 func (l *Locker) Put(pkg *Package) error {
 	if l.Contents != nil {
 		return errors.New("Locker is not empty")
@@ -124,6 +149,8 @@ func (l *Locker) Put(pkg *Package) error {
 	return nil
 }
 
+// Fetches an item from a locker.  Returns nil and an error if the locker is
+// empty, or the package and nil otherwise.
 func (l *Locker) Fetch() (*Package, error) {
 	if l.Contents == nil {
 		return nil, errors.New("Tried to fetch from empty locker")
@@ -135,6 +162,15 @@ func (l *Locker) Fetch() (*Package, error) {
 	return p, nil
 }
 
+// Creates a new inventory.
+// Pass it a map, with desired locker dimensions as keys and locker counts as values.
+// Denormalized and even duplicate values are permitted and will be handled gracefully
+// (e.g. {{1,2,3}:5, {3,2,1}:5} is equivalent to {{3,2,1}:10}). Non-duplicate values do
+// carry the performance optimization of exactly sizing some data structures, so they
+// are preferred if possible.  Empty inventories are allowed, though they are not useful.
+// Adding lockers/locker sizes to an inventory on the fly is possible but unimplemented.
+// Removing lockers is not an easy prospect, but is possible by making some changes to
+// how available lockers are stored.
 func NewInventory(locker_counts_by_size map[SizeSpec]int) *Inventory {
 	total_locker_count := 0
 	for _, count := range locker_counts_by_size {
@@ -214,6 +250,22 @@ func NewInventory(locker_counts_by_size map[SizeSpec]int) *Inventory {
 	return inv
 }
 
+// Fetches the most appropriate size of locker to store a given size of package in.
+// This is defined to be the size class of locker with the largest available capacity
+// in terms of both direct storage, and also larger available lockers.
+// If multiple such options exist, the smallest (volume-wise) locker is chosen.
+// note: this is usually, but not always, the locker with the best space efficiency.
+// An example where it is not:
+// imagine an inventory with 3 sizes of locker:
+// small-1 (4x1x1, 1   available)
+// small-2 (2x2x2, 100 available)
+// medium  (4x4x4, 1   available)
+// small-1 cannot fit into small-2, and neither can small-2 fit into small-1,
+// but both can fit inside medium.
+// if a 2x1x1 package comes in, it will be placed into small-2 even though it would be more
+// space efficient to place it into small-1, because of the relative scarcity of lockers
+// large enough to hold a package which could fit into small-1 but not small-2.
+// I assert that a space-optimizing algorithm would lead you astray if you applied it here.
 func (inv *Inventory) GetMostSuitableLockerSize(package_size SizeSpec) (LockerSize, error) {
 	// build a list of all locker sizes which a. have empty lockers and
 	// b. have enough space for the given dimensions
@@ -240,6 +292,8 @@ func (inv *Inventory) GetMostSuitableLockerSize(package_size SizeSpec) (LockerSi
 	return chosen_id, nil
 }
 
+// places a package into the inventory. O(n) for n different size lockers.
+// returns a locker ID and nil, or "" and an error if one occurs.
 func (inv *Inventory) DepositPackage(pkg *Package) (string, error) {
 	if _, ok := inv.LockersByPackageId[pkg.Id]; ok {
 		return "", errors.New("Duplicate package ID")
@@ -262,20 +316,25 @@ func (inv *Inventory) DepositPackage(pkg *Package) (string, error) {
 	return inv.Lockers[locker_index].Id, nil
 }
 
+// removes a package from the inventory (via package ID lookup).
 func (inv *Inventory) RetrievePackage(pkg *Package) (*Package, error) {
 	return inv.RetrievePackageById(pkg.Id)
 }
 
+// removes a package from the inventory.
 func (inv *Inventory) RetrievePackageById(id string) (*Package, error) {
 	lid, ok := inv.LockersByPackageId[id]
 	return inv.RetrievePackageInternal(lid, ok)
 }
 
+// removes a package from the inventory.
 func (inv *Inventory) RetrievePackageByLockerId(id string) (*Package, error) {
 	lid, ok := inv.LockersById[id]
 	return inv.RetrievePackageInternal(lid, ok)
 }
 
+// retrieves a package from the inventory. O(n) for n different size lockers.
+// internal function, not meant to be called directly.
 func (inv *Inventory) RetrievePackageInternal(locker_index int, ok bool) (*Package, error) {
 	if !ok {
 		return nil, errors.New("Package ID not known")
@@ -291,6 +350,8 @@ func (inv *Inventory) RetrievePackageInternal(locker_index int, ok bool) (*Packa
 	return pkg, nil
 }
 
+// Reserves a locker of the given size. This immediately removes it from the
+// available lockers in the inventory, and updates the inventory's space availability
 func (inv *Inventory) AllocateLocker(size_id LockerSize) int {
 	ctrl := inv.Control[size_id]
 	locker_index := ctrl.Lockers[len(ctrl.Lockers) - 1]
@@ -299,12 +360,16 @@ func (inv *Inventory) AllocateLocker(size_id LockerSize) int {
 	return locker_index
 }
 
+// returns a locker to the inventory. This immediately returns it to the inventory's
+// pool of available lockers and updates the inventory's space availability.
 func (inv *Inventory) DeallocateLocker(locker_index int) {
 	size_id := inv.Lockers[locker_index].SizeId
 	inv.Control[size_id].Lockers = append(inv.Control[size_id].Lockers, locker_index)
 	inv.AdjustVirtualCapacity(size_id, 1)
 }
 
+// Updates the inventory's space availability by adding the specified amount to
+// the given locker size, and all other lockers large enough to hold the same contents
 func (inv *Inventory) AdjustVirtualCapacity(size_id LockerSize, by int) {
 	inv.Control[size_id].VirtualCapacity += by
 	for _, other_id := range inv.Control[size_id].BiggerThan {
