@@ -258,6 +258,7 @@ func (inv *Inventory) DepositPackage(pkg *Package) (string, error) {
 	}
 	
 	inv.AllocateLocker(chosen_id)
+	inv.LockersByPackageId[pkg.Id] = locker_index
 	return inv.Lockers[locker_index].Id, nil
 }
 
@@ -285,8 +286,8 @@ func (inv *Inventory) RetrievePackageInternal(locker_index int, ok bool) (*Packa
 		return nil, err
 	}
 	
-	
 	inv.DeallocateLocker(locker_index)
+	delete(inv.LockersByPackageId, pkg.Id)
 	return pkg, nil
 }
 
