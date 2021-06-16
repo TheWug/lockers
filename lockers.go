@@ -250,8 +250,14 @@ func (inv *Inventory) DepositPackage(pkg *Package) (string, error) {
 		return "", err
 	}
 	
-	locker_index := inv.AllocateLocker(chosen_id)
-	inv.Lockers[locker_index].Put(pkg)
+	ctrl := inv.Control[chosen_id]
+	locker_index := ctrl.Lockers[len(ctrl.Lockers) - 1]
+	err = inv.Lockers[locker_index].Put(pkg)
+	if err != nil {
+		return "", err
+	}
+	
+	inv.AllocateLocker(chosen_id)
 	return inv.Lockers[locker_index].Id, nil
 }
 
