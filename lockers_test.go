@@ -873,8 +873,10 @@ func Test_Inventory_GetMostSuitableLockerSize(t *testing.T) {
 			}
 			if err != nil {
 				t.Errorf("Unexpected error: %s", err.Error())
+				return
 			} else if v.is_error {
 				t.Errorf("Expected error, but got %v instead", out)
+				return
 			}
 			
 			if out != v.inv.Sizes[v.answer] {
