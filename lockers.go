@@ -2,7 +2,7 @@ package lockers
 
 import (
 	"errors"
-	
+
 	"github.com/google/uuid"
 )
 
@@ -22,7 +22,7 @@ func (id LockerSize) Before(other_id LockerSize, inv IControlSpec) bool {
 	} else if self.VirtualCapacity == other.VirtualCapacity && self.Size.Volume() < other.Size.Volume() {
 		return true
 	}
-	
+
 	return false
 }
 
@@ -43,7 +43,7 @@ func (spec SizeSpec) Normalize() SizeSpec {
 	if spec.Height < 0 {
 		spec.Height = 0 - spec.Height
 	}
-	
+
 	// hard coded 3 element bubble sort
 	if spec.Height > spec.Width {
 		spec.Height, spec.Width = spec.Width, spec.Height
@@ -71,12 +71,12 @@ func (spec SizeSpec) Contains(other SizeSpec) bool {
 type LockerControlSpec struct {
 	SizeId LockerSize
 	Size SizeSpec
-	
+
 	BiggerThan []LockerSize
 	SmallerThan []LockerSize
-	
+
 	Lockers []int
-	
+
 	VirtualCapacity int
 }
 
@@ -87,23 +87,23 @@ func (lcs LockerControlSpec) Full() bool {
 type Locker struct {
 	Id string
 	SizeId LockerSize
-	
+
 	Contents *Package
 }
 
 type Package struct {
 	Id string
 	Size SizeSpec
-	
+
 	StoredIn *Locker
 }
 
 type Inventory struct {
 	Lockers []Locker
-	
+
 	Control map[LockerSize]*LockerControlSpec
 	Sizes map[SizeSpec]LockerSize
-	
+
 	LockersById map[string]int
 	LockersByPackageId map[string]int
 }
@@ -118,7 +118,7 @@ func (l *Locker) Put(pkg *Package) error {
 	} else if pkg.StoredIn != nil {
 		return errors.New("Package already in locker")
 	}
-	
+
 	l.Contents = pkg
 	pkg.StoredIn = l
 	return nil
@@ -128,7 +128,7 @@ func (l *Locker) Fetch() (*Package, error) {
 	if l.Contents == nil {
 		return nil, errors.New("Tried to fetch from empty locker")
 	}
-	
+
 	p := l.Contents
 	l.Contents = nil
 	p.StoredIn = nil
@@ -140,14 +140,14 @@ func NewInventory(locker_counts_by_size map[SizeSpec]int) *Inventory {
 	for _, count := range locker_counts_by_size {
 		total_locker_count += count
 	}
-	
+
 	inv := &Inventory{
 		Control: make(map[LockerSize]*LockerControlSpec, len(locker_counts_by_size)),
 		Sizes: make(map[SizeSpec]LockerSize, len(locker_counts_by_size)),
-		
+
 		LockersById: make(map[string]int, total_locker_count),
 		LockersByPackageId: make(map[string]int, total_locker_count),
-		
+
 		Lockers: make([]Locker, total_locker_count, total_locker_count),
 	}
 
@@ -171,7 +171,7 @@ func NewInventory(locker_counts_by_size map[SizeSpec]int) *Inventory {
 				Lockers: make([]int, 0, count),
 			}
 		}
-		
+
 		for max, i := count + index, 0; index < max; index, i = index+1, i+1 {
 			id := uuid.NewString()
 			inv.Lockers[index] = Locker{
@@ -182,7 +182,7 @@ func NewInventory(locker_counts_by_size map[SizeSpec]int) *Inventory {
 			inv.Control[size_id].Lockers = append(inv.Control[size_id].Lockers, index)
 		}
 	}
-	
+
 	// for each size, compute which other sizes fit entirely within it
 	// and store a bidirectional graph representing this relationship.
 	// runs in O(n^2) for n distinct sizes, which is not too bad given n's
@@ -198,7 +198,7 @@ func NewInventory(locker_counts_by_size map[SizeSpec]int) *Inventory {
 			}
 		}
 	}
-	
+
 	// calculate the virtual capacity of each locker group
 	// this also runs in O(n^2) time. The problem is finding partial
 	// sums of nodes in a directed acyclig graph. Somewhat to my surprise,
@@ -210,7 +210,7 @@ func NewInventory(locker_counts_by_size map[SizeSpec]int) *Inventory {
 		}
 		ctrl.VirtualCapacity += len(ctrl.Lockers)
 	}
-	
+
 	return inv
 }
 
@@ -221,14 +221,14 @@ func (inv *Inventory) GetMostSuitableLockerSize(package_size SizeSpec) (LockerSi
 	for size, size_id := range inv.Sizes {
 		if !size.Contains(package_size) { continue }
 		if inv.Control[size_id].Full() { continue }
-		
+
 		candidate_sizes = append(candidate_sizes, size_id)
 	}
-	
+
 	if len(candidate_sizes) == 0 {
 		return LockerSize(0), errors.New("No available lockers which can fit package")
 	}
-	
+
 	// choose the most eligible candidate
 	chosen_id := candidate_sizes[0]
 	for _, id := range candidate_sizes[1:] {
@@ -249,14 +249,14 @@ func (inv *Inventory) DepositPackage(pkg *Package) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	ctrl := inv.Control[chosen_id]
 	locker_index := ctrl.Lockers[len(ctrl.Lockers) - 1]
 	err = inv.Lockers[locker_index].Put(pkg)
 	if err != nil {
 		return "", err
 	}
-	
+
 	inv.AllocateLocker(chosen_id)
 	inv.LockersByPackageId[pkg.Id] = locker_index
 	return inv.Lockers[locker_index].Id, nil
@@ -280,12 +280,12 @@ func (inv *Inventory) RetrievePackageInternal(locker_index int, ok bool) (*Packa
 	if !ok {
 		return nil, errors.New("Package ID not known")
 	}
-	
+
 	pkg, err := inv.Lockers[locker_index].Fetch()
 	if err != nil {
 		return nil, err
 	}
-	
+
 	inv.DeallocateLocker(locker_index)
 	delete(inv.LockersByPackageId, pkg.Id)
 	return pkg, nil
