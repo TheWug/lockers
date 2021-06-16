@@ -389,6 +389,10 @@ func CompareInventories(t *testing.T, a, b *Inventory) (bool, string) {
 	return true, ""
 }
 
+// Note: this test sometimes spuriously reports less than 100% code coverage in NewInventory.
+// The problem is that some code in NewInventory is conditionally executed depending
+// on the order of traversal of a map, and go maps are unordered. There is no way to guarantee
+// an order such that all code paths are hit.
 func Test_New_Inventory(t *testing.T) {
 	type X struct {
 		size_counts map[SizeSpec]int
