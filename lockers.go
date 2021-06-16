@@ -241,6 +241,10 @@ func (inv *Inventory) GetMostSuitableLockerSize(package_size SizeSpec) (LockerSi
 }
 
 func (inv *Inventory) DepositPackage(pkg *Package) (string, error) {
+	if _, ok := inv.LockersByPackageId[pkg.Id]; ok {
+		return "", errors.New("Duplicate package ID")
+	}
+
 	chosen_id, err := inv.GetMostSuitableLockerSize(pkg.Size.Normalize())
 	if err != nil {
 		return "", err
